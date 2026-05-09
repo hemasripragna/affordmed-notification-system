@@ -5,17 +5,7 @@
 # Stage 1 – REST API Design
 
 ## Objective
-Design a scalable notification system that supports creating, fetching, updating, deleting, and real-time delivery of notifications.
-
----
-
-## Core Features
-- Create notifications
-- Fetch user notifications
-- Mark notification as read
-- Mark all notifications as read
-- Delete notifications
-- Real-time notification delivery
+Design REST APIs for a scalable notification system supporting create, fetch, update, delete, and real-time notifications.
 
 ---
 
@@ -24,15 +14,10 @@ Design a scalable notification system that supports creating, fetching, updating
 
 ---
 
-## 1. Create Notification API
-
-### Endpoint
+## 1. Create Notification
 POST /api/v1/notifications
 
-### Description
-Creates and sends notifications to one or more users.
-
-### Request Body
+Request:
 {
   "recipientIds": ["u101", "u102"],
   "title": "Appointment Confirmed",
@@ -44,233 +29,252 @@ Creates and sends notifications to one or more users.
   }
 }
 
-### Response
+Response:
 {
   "success": true,
-  "notificationId": "n1001",
-  "message": "Notification created successfully"
+  "notificationId": "n1001"
 }
 
 ---
 
-## 2. Get Notifications API
+## 2. Get Notifications
+GET /api/v1/notifications?page=1&limit=20
 
-GET /api/v1/notifications?page=1&limit=20&status=UNREAD
-
-### Response
+Response:
 {
-  "success": true,
-  "notifications": [
-    {
-      "notificationId": "n1001",
-      "title": "Appointment Confirmed",
-      "message": "Your appointment is confirmed",
-      "status": "UNREAD",
-      "createdAt": "2026-05-09T10:00:00Z"
-    }
-  ]
+  "notifications": []
 }
 
 ---
 
-## 3. Mark as Read API
-PATCH /api/v1/notifications/{notificationId}/read
+## 3. Mark as Read
+PATCH /api/v1/notifications/{id}/read
 
 ---
 
-## 4. Mark All as Read API
+## 4. Mark All as Read
 PATCH /api/v1/notifications/read-all
 
 ---
 
-## 5. Delete Notification API
-DELETE /api/v1/notifications/{notificationId}
+## 5. Delete Notification
+DELETE /api/v1/notifications/{id}
 
 ---
 
-## Notification Schema
+## Real-time System
+WebSocket + Redis Pub/Sub
+Backend → Redis → WebSocket → Client
+
+---
+
+# Stage 2 – DB Design & Scalability
+
+## Database Choice
+- PostgreSQL (primary)
+- Redis (cache + real-time)
+
+---
+
+## Tables
+
+Users:
+CREATE TABLE users (
+  user_id UUID PRIMARY KEY,
+  name TEXT,
+  email TEXT
+);
+
+Notifications:
+CREATE TABLE notifications (
+  notification_id UUID PRIMARY KEY,
+  title TEXT,
+  message TEXT,
+  type TEXT,
+  priority TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP
+);
+
+User Notifications:
+CREATE TABLE user_notifications (
+  id UUID PRIMARY KEY,
+  user_id UUID,
+  notification_id UUID,
+  status TEXT DEFAULT 'UNREAD',
+  is_deleted BOOLEAN DEFAULT FALSE
+);
+
+---
+
+## Indexes
+CREATE INDEX idx_user ON user_notifications(user_id);
+CREATE INDEX idx_status ON user_notifications(status);
+
+---
+
+## Scalability
+- Read replicas
+- Partitioning
+- Redis caching
+- Kafka queues
+
+---
+
+# Stage 3 – Query Optimization
+
+## Problem Query
+SELECT * FROM notifications
+WHERE student_id=1042 AND isRead=false
+ORDER BY createdAt;
+
+---
+
+## Issue
+- Full table scan
+- No index
+- Sorting overhead
+
+---
+
+## Fix
+CREATE INDEX idx_student_unread
+ON notifications(student_id, isRead, createdAt);
+
+---
+
+## Optimized Query
+SELECT * FROM notifications
+WHERE student_id=1042 AND isRead=false;
+
+---
+
+## Placement Query (7 days)
+SELECT * FROM notifications
+WHERE type='Placement'
+AND createdAt >= NOW() - INTERVAL 7 DAY;
+
+---
+
+# Stage 4 – Performance Tuning
+
+## Problem
+DB overload due to frequent reads
+
+---
+
+## Solutions
+
+### 1. Redis Cache
+Store frequent notifications
+
+### 2. Pagination
+LIMIT 20 OFFSET 0;
+
+### 3. Event Driven System
+Kafka / Queue based processing
+
+---
+
+## Tradeoffs
+- Cache: fast but stale
+- Queue: scalable but complex
+
+---
+
+# Stage 5 – Bulk Notification System
+
+## Problem
+50,000 users notified via loop → slow
+
+---
+
+## Bad Approach
+for user in users:
+  sendEmail()
+  saveDB()
+
+---
+
+## Improved Approach
+- Use Kafka/RabbitMQ
+- Batch processing (1000 users)
+- Parallel workers
+
+---
+
+## Flow
+HR → Queue → Workers → Email + DB + Push
+
+---
+
+## Benefits
+- Scalable
+- Fast
+- Fault tolerant
+
+---
+
+# Stage 6 – API Optimization
+
+## Problem
+Large JSON responses slow API
+
+---
+
+## Solutions
+- Pagination
+- Filtering by type
+- Select only required fields
+
+---
+
+## Optimized Response
 {
-  "notificationId": "string",
-  "userId": "string",
-  "title": "string",
-  "message": "string",
-  "type": "SYSTEM | ALERT | PROMOTIONAL",
-  "priority": "LOW | MEDIUM | HIGH",
-  "status": "READ | UNREAD",
-  "metadata": {},
-  "createdAt": "timestamp"
+  "id": "",
+  "type": "",
+  "message": "",
+  "timestamp": ""
 }
 
 ---
 
-## Real-Time Notification System
+# Stage 7 – Frontend (React)
 
-### Technology Used
-- WebSockets (Socket.IO)
-- Redis Pub/Sub
-
-### Flow
-Backend → Redis → WebSocket Server → Client
+## Setup
+npx create-react-app notification-ui
+cd notification-ui
+npm install axios socket.io-client
 
 ---
 
-# Stage 2 – Database Design & Scalability
+## Fetch API
+axios.get("/api/v1/notifications")
 
 ---
 
-## 1. Database Choice
-
-### PostgreSQL (Primary DB)
-### Redis (Cache + Real-time)
+## Real-time updates
+socket.on("notification", updateUI);
 
 ---
 
-## Why PostgreSQL
-- ACID compliance
-- Strong relational model
-- JSON support
-- Indexing support
-- Scalable with replication
+## UI Structure
+- NotificationList
+- NotificationItem
+- Dashboard
 
 ---
 
-## Why Redis
-- Real-time notifications (Pub/Sub)
-- Caching unread counts
-- Reduces DB load
-- Fast performance
+## Flow
+React UI → API Gateway → Backend → DB + Redis → WebSocket → UI update
 
 ---
 
-## 2. Database Schema
+# FINAL SUMMARY
 
-### Users Table
-CREATE TABLE users (
-    user_id UUID PRIMARY KEY,
-    name VARCHAR(100),
-    email VARCHAR(255),
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
----
-
-### Notifications Table
-CREATE TABLE notifications (
-    notification_id UUID PRIMARY KEY,
-    title VARCHAR(255),
-    message TEXT,
-    type VARCHAR(50),
-    priority VARCHAR(20),
-    metadata JSONB,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
----
-
-### User Notifications Table
-CREATE TABLE user_notifications (
-    id UUID PRIMARY KEY,
-    user_id UUID REFERENCES users(user_id),
-    notification_id UUID REFERENCES notifications(notification_id),
-    status VARCHAR(20) DEFAULT 'UNREAD',
-    is_deleted BOOLEAN DEFAULT FALSE,
-    read_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
----
-
-### Notification Preferences Table
-CREATE TABLE notification_preferences (
-    user_id UUID PRIMARY KEY,
-    email BOOLEAN DEFAULT TRUE,
-    sms BOOLEAN DEFAULT FALSE,
-    push BOOLEAN DEFAULT TRUE,
-    system BOOLEAN DEFAULT TRUE
-);
-
----
-
-## 3. Indexing Strategy
-CREATE INDEX idx_user_notifications_user_id ON user_notifications(user_id);
-CREATE INDEX idx_user_notifications_status ON user_notifications(status);
-CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
-
----
-
-## 4. Scalability Problems & Solutions
-
-### Problem 1: Slow Queries
-Solution: Indexing + pagination
-
-### Problem 2: High Load
-Solution: Read replicas
-
-### Problem 3: Real-time overload
-Solution: Redis Pub/Sub + Kafka
-
-### Problem 4: Storage growth
-Solution: Archiving old notifications
-
----
-
-## 5. SQL Queries
-
-### Create Notification
-INSERT INTO notifications VALUES (
-    gen_random_uuid(),
-    'Appointment Confirmed',
-    'Your appointment is confirmed',
-    'SYSTEM',
-    'HIGH',
-    '{"appointmentId":"APT1001"}',
-    NOW()
-);
-
----
-
-### Assign Notification to User
-INSERT INTO user_notifications VALUES (
-    gen_random_uuid(),
-    'USER_ID',
-    'NOTIFICATION_ID',
-    'UNREAD',
-    FALSE,
-    NULL,
-    NOW()
-);
-
----
-
-### Fetch Notifications
-SELECT n.notification_id, n.title, n.message, un.status
-FROM user_notifications un
-JOIN notifications n ON n.notification_id = un.notification_id
-WHERE un.user_id = 'USER_ID'
-AND un.is_deleted = FALSE
-ORDER BY n.created_at DESC;
-
----
-
-### Mark as Read
-UPDATE user_notifications
-SET status = 'READ', read_at = NOW()
-WHERE notification_id = 'NOTIFICATION_ID';
-
----
-
-### Delete Notification
-UPDATE user_notifications
-SET is_deleted = TRUE
-WHERE notification_id = 'NOTIFICATION_ID';
-
----
-
-## Final Summary
-
-This system provides:
-- Scalable REST APIs
-- Reliable database design
-- Real-time notification delivery
-- Efficient querying using indexing
-- High scalability using Redis and PostgreSQL
+- REST API design implemented
+- Scalable DB architecture using PostgreSQL + Redis
+- Optimized queries with indexing
+- Performance improved using caching and queues
+- Bulk notifications handled via batch processing
+- Frontend built using React with real-time updates
